@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: employee-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - employee_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  employee-service:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/employeemanagement
+      DB_USERNAME: postgres
+      DB_PASSWORD: root
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+
+volumes:
+  employee_pgdata:
