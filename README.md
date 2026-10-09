@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Employee Service
 
 A small production-style Spring Boot REST API using PostgreSQL and Flyway.
@@ -158,3 +159,7 @@ Delete database volume too:
 ```bash
 docker compose down -v
 ```
+=======
+# Employee-Management
+A real-world Employee Management System built with Spring Boot and PostgreSQL, providing RESTful APIs for employee CRUD operations, validation, exception handling, database migrations, testing, and production-ready development practices.
+>>>>>>> 6169909a295fb19b5c5e64ebec0f5362a686eab4
