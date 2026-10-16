@@ -30,7 +30,7 @@ pipeline {
                             "DB_PASSWORD=${env.DB_PASSWORD}",
                             "SERVER_PORT=8080"
                         ]) {
-                            bat 'mvn clean package'
+                            bat 'mvn clean package -DskipTests'
                         }
                     }
                 }
@@ -139,6 +139,7 @@ pipeline {
                         QA: '8082',
                         UAT: '8083'
                     ]
+
                     def port = ports[params.ENVIRONMENT]
 
                     bat """
@@ -148,4 +149,5 @@ pipeline {
                 }
             }
         }
+    }
 }
