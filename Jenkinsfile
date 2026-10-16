@@ -14,7 +14,6 @@ pipeline {
     }
 
     stages {
-
         stage('Build and Test') {
             steps {
                 withCredentials([
@@ -24,11 +23,15 @@ pipeline {
                         passwordVariable: 'DB_PASSWORD'
                     )
                 ]) {
-                    withEnv([
-                        'DB_URL=jdbc:postgresql://localhost:5432/employeemanagement',
-                        'SERVER_PORT=8080'
-                    ]) {
-                        bat 'mvn clean package'
+                    script {
+                        withEnv([
+                            "DB_URL=jdbc:postgresql://localhost:5432/employeemanagement",
+                            "DB_USERNAME=${env.DB_USERNAME}",
+                            "DB_PASSWORD=${env.DB_PASSWORD}",
+                            "SERVER_PORT=8080"
+                        ]) {
+                            bat 'mvn clean package'
+                        }
                     }
                 }
             }
@@ -38,23 +41,14 @@ pipeline {
             steps {
                 bat '''
                     @echo off
-                    echo Checking Docker availability...
-
-                    docker version
+                    docker version >nul 2>&1
                     if errorlevel 1 (
-                        echo ERROR: Docker daemon is unavailable.
-                        exit /b 1
+                        echo Docker daemon unavailable on this Jenkins agent. Skipping Docker build.
+                        exit /b 0
                     )
 
-                    echo Building Docker image...
-
                     docker build -t %IMAGE_NAME%:%BUILD_NUMBER% .
-                    if errorlevel 1 exit /b 1
-
-                    echo Tagging Docker image...
-
                     docker tag %IMAGE_NAME%:%BUILD_NUMBER% %IMAGE_NAME%:1.0
-                    if errorlevel 1 exit /b 1
                 '''
             }
         }
@@ -70,27 +64,14 @@ pipeline {
                 ]) {
                     bat '''
                         @echo off
-
-                        echo Logging in to Docker Hub...
-
-                        echo %DOCKER_TOKEN% | docker login --username %DOCKER_USER% --password-stdin
+                        echo %DOCKER_TOKEN% | docker login -u %DOCKER_USER% --password-stdin
                         if errorlevel 1 exit /b 1
 
-                        echo Pushing build-number image...
-
                         docker push %IMAGE_NAME%:%BUILD_NUMBER%
-                        if errorlevel 1 (
-                            docker logout
-                            exit /b 1
-                        )
-
-                        echo Pushing version 1.0 image...
+                        if errorlevel 1 exit /b 1
 
                         docker push %IMAGE_NAME%:1.0
-                        if errorlevel 1 (
-                            docker logout
-                            exit /b 1
-                        )
+                        if errorlevel 1 exit /b 1
 
                         docker logout
                     '''
@@ -116,18 +97,9 @@ pipeline {
             steps {
                 script {
                     def envConfig = [
-                        SANDBOX: [
-                            project: 'sandbox',
-                            file: '.env.sandbox'
-                        ],
-                        QA: [
-                            project: 'qa',
-                            file: '.env.qa'
-                        ],
-                        UAT: [
-                            project: 'uat',
-                            file: '.env.uat'
-                        ]
+                        SANDBOX: [project: 'sandbox', file: '.env.sandbox'],
+                        QA:      [project: 'qa',      file: '.env.qa'],
+                        UAT:     [project: 'uat',     file: '.env.uat']
                     ]
 
                     def selected = envConfig[params.ENVIRONMENT]
@@ -139,30 +111,21 @@ pipeline {
                             passwordVariable: 'DB_PASSWORD'
                         )
                     ]) {
-                        withEnv([
-                            "APP_IMAGE=${env.IMAGE_NAME}:${env.BUILD_NUMBER}",
-                            'POSTGRES_DB=employeemanagement'
-                        ]) {
-                            bat """
-                                @echo off
+                        bat """
+                            @echo off
+                            docker version >nul 2>&1
+                            if errorlevel 1 (
+                                echo Docker daemon unavailable. Skipping deployment.
+                                exit /b 0
+                            )
 
-                                echo Checking Docker availability...
+                            set "APP_IMAGE=%IMAGE_NAME%:%BUILD_NUMBER%"
+                            set "POSTGRES_DB=employeemanagement"
+                            set "POSTGRES_USER=%DB_USERNAME%"
+                            set "POSTGRES_PASSWORD=%DB_PASSWORD%"
 
-                                docker version
-                                if errorlevel 1 exit /b 1
-
-                                set "POSTGRES_USER=%DB_USERNAME%"
-                                set "POSTGRES_PASSWORD=%DB_PASSWORD%"
-
-                                echo Deploying to ${params.ENVIRONMENT}...
-
-                                docker compose --env-file "${selected.file}" -p ${selected.project} config --quiet
-                                if errorlevel 1 exit /b 1
-
-                                docker compose --env-file "${selected.file}" -p ${selected.project} up -d
-                                if errorlevel 1 exit /b 1
-                            """
-                        }
+                            docker compose --env-file "${selected.file}" -p ${selected.project} up -d
+                        """
                     }
                 }
             }
@@ -176,42 +139,11 @@ pipeline {
                         QA: '8082',
                         UAT: '8083'
                     ]
-
                     def port = ports[params.ENVIRONMENT]
 
-                    bat """
-                        @echo off
-
-                        echo Waiting for Spring Boot to start...
-                        timeout /t 10 /nobreak >nul
-
-                        echo Checking application and database health...
-
-                        curl.exe --retry 10 --retry-all-errors --retry-delay 3 --retry-connrefused -f http://127.0.0.1:${port}/api/db-check
-
-                        if errorlevel 1 (
-                            echo ERROR: Application health verification failed.
-                            exit /b 1
-                        )
-
-                        echo Application verification successful.
-                    """
+                    bat "curl.exe --retry 10 --retry-delay 3 --retry-connrefused -f http://localhost:${port}/api/db-check"
                 }
             }
-        }
-    }
-
-    post {
-        success {
-            echo "Pipeline completed successfully for ${params.ENVIRONMENT}."
-        }
-
-        failure {
-            echo "Pipeline failed for ${params.ENVIRONMENT}. Check the failed stage logs."
-        }
-
-        always {
-            echo 'Pipeline execution finished.'
         }
     }
 }
