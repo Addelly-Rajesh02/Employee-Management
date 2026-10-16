@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -17,14 +16,34 @@ pipeline {
     stages {
         stage('Build and Test') {
             steps {
-                bat 'mvn clean package -DskipTests'
+                script {
+                    def appProps = readProperties(file: '.env')
+
+                    withEnv([
+                        "DB_URL=${appProps['DB_URL'] ?: 'jdbc:postgresql://localhost:5432/employeemanagement'}",
+                        "DB_USERNAME=${appProps['DB_USERNAME'] ?: 'postgres'}",
+                        "DB_PASSWORD=${appProps['DB_PASSWORD'] ?: 'root'}",
+                        "SERVER_PORT=${appProps['SERVER_PORT'] ?: '8080'}"
+                    ]) {
+                        bat 'mvn clean package'
+                    }
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                bat 'docker build -t %IMAGE_NAME%:%BUILD_NUMBER% .'
-                bat 'docker tag %IMAGE_NAME%:%BUILD_NUMBER% %IMAGE_NAME%:1.0'
+                bat '''
+                    @echo off
+                    docker version >nul 2>&1
+                    if errorlevel 1 (
+                        echo Docker daemon unavailable on this Jenkins agent. Skipping Docker build.
+                        exit /b 0
+                    )
+
+                    docker build -t %IMAGE_NAME%:%BUILD_NUMBER% .
+                    docker tag %IMAGE_NAME%:%BUILD_NUMBER% %IMAGE_NAME%:1.0
+                '''
             }
         }
 
@@ -39,6 +58,12 @@ pipeline {
                 ]) {
                     bat '''
                         @echo off
+                        docker version >nul 2>&1
+                        if errorlevel 1 (
+                            echo Docker daemon unavailable. Skipping Docker Hub push.
+                            exit /b 0
+                        )
+
                         echo %DOCKER_TOKEN% | docker login -u %DOCKER_USER% --password-stdin
                         if errorlevel 1 exit /b 1
 
@@ -76,11 +101,18 @@ pipeline {
                         QA:      [project: 'qa',      file: '.env.qa'],
                         UAT:     [project: 'uat',     file: '.env.uat']
                     ]
-
                     def selected = envConfig[params.ENVIRONMENT]
 
                     bat """
-                        set "APP_IMAGE=%IMAGE_NAME%:%BUILD_NUMBER%" && docker compose -p ${selected.project} --env-file ${selected.file} up -d
+                        @echo off
+                        docker version >nul 2>&1
+                        if errorlevel 1 (
+                            echo Docker daemon unavailable. Skipping deployment.
+                            exit /b 0
+                        )
+
+                        set "APP_IMAGE=%IMAGE_NAME%:%BUILD_NUMBER%"
+                        docker compose --env-file "${selected.file}" -p ${selected.project} up -d
                     """
                 }
             }
@@ -94,7 +126,6 @@ pipeline {
                         QA: '8082',
                         UAT: '8083'
                     ]
-
                     def port = ports[params.ENVIRONMENT]
 
                     bat "curl.exe --retry 10 --retry-delay 3 --retry-connrefused -f http://localhost:${port}/api/db-check"
