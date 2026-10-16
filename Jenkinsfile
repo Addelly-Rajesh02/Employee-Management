@@ -18,7 +18,7 @@ pipeline {
             steps {
                 withCredentials([
                     usernamePassword(
-                        credentialsId: 'postgres-employee',
+                        credentialsId: 'postgres-employee-management',
                         usernameVariable: 'DB_USERNAME',
                         passwordVariable: 'DB_PASSWORD'
                     )
