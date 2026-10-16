@@ -17,13 +17,25 @@ pipeline {
         stage('Build and Test') {
             steps {
                 script {
-                    def appProps = readProperties(file: '.env')
+                    def props = [:]
+                    def envFile = readFile(file: '.env')
+
+                    envFile.eachLine { line ->
+                        if (line.trim() && !line.trim().startsWith('#')) {
+                            def idx = line.indexOf('=')
+                            if (idx > 0) {
+                                def key = line.substring(0, idx).trim()
+                                def value = line.substring(idx + 1).trim()
+                                props[key] = value
+                            }
+                        }
+                    }
 
                     withEnv([
-                        "DB_URL=${appProps['DB_URL'] ?: 'jdbc:postgresql://localhost:5432/employeemanagement'}",
-                        "DB_USERNAME=${appProps['DB_USERNAME'] ?: 'postgres'}",
-                        "DB_PASSWORD=${appProps['DB_PASSWORD'] ?: 'root'}",
-                        "SERVER_PORT=${appProps['SERVER_PORT'] ?: '8080'}"
+                        "DB_URL=${props.get('DB_URL', 'jdbc:postgresql://localhost:5432/employeemanagement')}",
+                        "DB_USERNAME=${props.get('DB_USERNAME', 'postgres')}",
+                        "DB_PASSWORD=${props.get('DB_PASSWORD', 'root')}",
+                        "SERVER_PORT=${props.get('SERVER_PORT', '8080')}"
                     ]) {
                         bat 'mvn clean package'
                     }
@@ -98,9 +110,10 @@ pipeline {
                 script {
                     def envConfig = [
                         SANDBOX: [project: 'sandbox', file: '.env.sandbox'],
-                        QA:      [project: 'qa',      file: '.env.qa'],
-                        UAT:     [project: 'uat',     file: '.env.uat']
+                        QA:      [project: 'qa', file: '.env.qa'],
+                        UAT:     [project: 'uat', file: '.env.uat']
                     ]
+
                     def selected = envConfig[params.ENVIRONMENT]
 
                     bat """
@@ -126,6 +139,7 @@ pipeline {
                         QA: '8082',
                         UAT: '8083'
                     ]
+
                     def port = ports[params.ENVIRONMENT]
 
                     bat "curl.exe --retry 10 --retry-delay 3 --retry-connrefused -f http://localhost:${port}/api/db-check"
