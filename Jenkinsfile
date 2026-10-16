@@ -64,12 +64,6 @@ pipeline {
                 ]) {
                     bat '''
                         @echo off
-                        docker version >nul 2>&1
-                        if errorlevel 1 (
-                            echo Docker daemon unavailable. Skipping Docker Hub push.
-                            exit /b 0
-                        )
-
                         echo %DOCKER_TOKEN% | docker login -u %DOCKER_USER% --password-stdin
                         if errorlevel 1 exit /b 1
 
