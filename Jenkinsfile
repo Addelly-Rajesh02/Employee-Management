@@ -24,15 +24,13 @@ pipeline {
                     )
                 ]) {
                     script {
-                        // Use the DB credentials from Jenkins, not hardcoded repo values
                         withEnv([
                             "DB_URL=jdbc:postgresql://localhost:5432/employeemanagement",
                             "DB_USERNAME=${env.DB_USERNAME}",
                             "DB_PASSWORD=${env.DB_PASSWORD}",
                             "SERVER_PORT=8080"
                         ]) {
-                            // Keep skipTests because this repo is not configured for a non-Postgres test runtime yet.
-                            bat 'mvn clean package -DskipTests'
+                            bat 'mvn clean package'
                         }
                     }
                 }
@@ -114,7 +112,7 @@ pipeline {
 
                     withCredentials([
                         usernamePassword(
-                            credentialsId: 'postgres-employee',
+                            credentialsId: 'Postgres-employee-management',
                             usernameVariable: 'DB_USERNAME',
                             passwordVariable: 'DB_PASSWORD'
                         )
