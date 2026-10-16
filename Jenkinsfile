@@ -141,9 +141,10 @@ pipeline {
                     ]
                     def port = ports[params.ENVIRONMENT]
 
-                    bat "curl.exe --retry 10 --retry-delay 3 --retry-connrefused -f http://localhost:${port}/api/db-check"
+                    bat """
+                        @echo off
+                        curl.exe -4 --silent --show-error --fail --retry 20 --retry-delay 3 --retry-connrefused http://127.0.0.1:${port}/api/db-check
+                    """
                 }
             }
         }
-    }
-}
