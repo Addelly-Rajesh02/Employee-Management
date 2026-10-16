@@ -141,11 +141,25 @@ pipeline {
                     ]
 
                     def port = ports[params.ENVIRONMENT]
+                    def ready = false
 
-                    bat """
-                        @echo off
-                        curl.exe -4 --silent --show-error --fail --retry 20 --retry-delay 3 --retry-connrefused http://127.0.0.1:${port}/api/db-check
-                    """
+                    for (int i = 0; i < 30; i++) {
+                        def rc = bat(
+                            script: "curl.exe -4 -fsS -o NUL http://127.0.0.1:${port}/api/db-check",
+                            returnStatus: true
+                        )
+
+                        if (rc == 0) {
+                            ready = true
+                            break
+                        }
+
+                        sleep(time: 5, unit: 'SECONDS')
+                    }
+
+                    if (!ready) {
+                        error("Deployment verification failed for ${params.ENVIRONMENT} on port ${port}")
+                    }
                 }
             }
         }
