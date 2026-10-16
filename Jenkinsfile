@@ -16,28 +16,24 @@ pipeline {
     stages {
         stage('Build and Test') {
             steps {
-                script {
-                    def props = [:]
-                    def envFile = readFile(file: '.env')
-
-                    envFile.eachLine { line ->
-                        if (line.trim() && !line.trim().startsWith('#')) {
-                            def idx = line.indexOf('=')
-                            if (idx > 0) {
-                                def key = line.substring(0, idx).trim()
-                                def value = line.substring(idx + 1).trim()
-                                props[key] = value
-                            }
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'postgres-employee',
+                        usernameVariable: 'DB_USERNAME',
+                        passwordVariable: 'DB_PASSWORD'
+                    )
+                ]) {
+                    script {
+                        // Use the DB credentials from Jenkins, not hardcoded repo values
+                        withEnv([
+                            "DB_URL=jdbc:postgresql://localhost:5432/employeemanagement",
+                            "DB_USERNAME=${env.DB_USERNAME}",
+                            "DB_PASSWORD=${env.DB_PASSWORD}",
+                            "SERVER_PORT=8080"
+                        ]) {
+                            // Keep skipTests because this repo is not configured for a non-Postgres test runtime yet.
+                            bat 'mvn clean package -DskipTests'
                         }
-                    }
-
-                    withEnv([
-                        "DB_URL=${props.get('DB_URL', 'jdbc:postgresql://localhost:5432/employeemanagement')}",
-                        "DB_USERNAME=${props.get('DB_USERNAME', 'postgres')}",
-                        "DB_PASSWORD=${props.get('DB_PASSWORD', 'root')}",
-                        "SERVER_PORT=${props.get('SERVER_PORT', '8080')}"
-                    ]) {
-                        bat 'mvn clean package'
                     }
                 }
             }
@@ -110,23 +106,35 @@ pipeline {
                 script {
                     def envConfig = [
                         SANDBOX: [project: 'sandbox', file: '.env.sandbox'],
-                        QA:      [project: 'qa', file: '.env.qa'],
-                        UAT:     [project: 'uat', file: '.env.uat']
+                        QA:      [project: 'qa',      file: '.env.qa'],
+                        UAT:     [project: 'uat',     file: '.env.uat']
                     ]
 
                     def selected = envConfig[params.ENVIRONMENT]
 
-                    bat """
-                        @echo off
-                        docker version >nul 2>&1
-                        if errorlevel 1 (
-                            echo Docker daemon unavailable. Skipping deployment.
-                            exit /b 0
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'postgres-employee',
+                            usernameVariable: 'DB_USERNAME',
+                            passwordVariable: 'DB_PASSWORD'
                         )
+                    ]) {
+                        bat """
+                            @echo off
+                            docker version >nul 2>&1
+                            if errorlevel 1 (
+                                echo Docker daemon unavailable. Skipping deployment.
+                                exit /b 0
+                            )
 
-                        set "APP_IMAGE=%IMAGE_NAME%:%BUILD_NUMBER%"
-                        docker compose --env-file "${selected.file}" -p ${selected.project} up -d
-                    """
+                            set "APP_IMAGE=%IMAGE_NAME%:%BUILD_NUMBER%"
+                            set "POSTGRES_DB=employeemanagement"
+                            set "POSTGRES_USER=%DB_USERNAME%"
+                            set "POSTGRES_PASSWORD=%DB_PASSWORD%"
+
+                            docker compose --env-file "${selected.file}" -p ${selected.project} up -d
+                        """
+                    }
                 }
             }
         }
@@ -139,7 +147,6 @@ pipeline {
                         QA: '8082',
                         UAT: '8083'
                     ]
-
                     def port = ports[params.ENVIRONMENT]
 
                     bat "curl.exe --retry 10 --retry-delay 3 --retry-connrefused -f http://localhost:${port}/api/db-check"
